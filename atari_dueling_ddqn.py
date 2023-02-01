@@ -145,7 +145,16 @@ def plot_results(rewards, losses):
         mean_losses.append(sum(losses[i:100+i]) / 100)
 
     plt.figure()
-    plt.suptitle("Results DDQN")
+    title = "Results"
+    if IS_DDQN:
+        title = "Results DDQN"
+    else:
+        title = "Results DQN"
+    if IS_DUELING_NETWORK:
+        title += " dual-stream"
+    else:
+        title += " single-stream"
+    plt.suptitle(title)
     plt.subplot(2, 1, 1)
     plt.plot(rewards)
     plt.plot(range(99, len(mean_rewards) + 99), mean_rewards, color='orange')
@@ -191,9 +200,10 @@ parser.add_argument("-f", "--final_exploration_frame", type=int,
                          " default is a 10th of total training frames")
 
 args = parser.parse_args()
-IS_DDQN = args.dqn
+IS_TRAINING = args.train
+IS_DDQN = not args.dqn
 IS_DUELING_NETWORK = not args.single_network
-TRAINING_FRAMES = not args.training_frames
+TRAINING_FRAMES = args.training_frames
 BATCH_SIZE = args.batch_size
 REPLAY_MEMORY_SIZE = args.replay_size
 AGENT_HISTORY_LENGTH = 4
@@ -207,25 +217,26 @@ if args.final_exploration_frame:
     FINAL_EXPLORATION_FRAME = args.final_exploration_frame
 else:
     FINAL_EXPLORATION_FRAME = TRAINING_FRAMES / 10
-EXPLORATION_DECAY = (INITIAL_EXPLORATION - FINAL_EXPLORATION) \
-                    / (FINAL_EXPLORATION_FRAME / TARGET_NETWORK_UPDATE_FREQUENCY)
+if FINAL_EXPLORATION_FRAME > 0:
+    EXPLORATION_DECAY = (INITIAL_EXPLORATION - FINAL_EXPLORATION) \
+                        / (FINAL_EXPLORATION_FRAME / TARGET_NETWORK_UPDATE_FREQUENCY)
+else:
+    EXPLORATION_DECAY = 1
 REPLAY_START_SIZE = 10_000
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
-env = gym.make('ALE/Pong-v5',
+env = gym.make('ALE/' + args.game.capitalize() + '-v5',
                frameskip=1,  # no frameskip, as frameskip is applied in the AtariPreprocessing-wrapper
                repeat_action_probability=0,  # repeat_action_probability set to 0 because not applied in original paper
                full_action_space=False)
 env = AtariPreprocessing(env, scale_obs=True)
 env = FrameStack(env, AGENT_HISTORY_LENGTH)
 number_valid_actions = env.action_space.n
-learner = DQNLearner(observation.shape[0], number_valid_actions)
-learner.update_target_network()
-
 observation = env.reset()[0]
 observation = transform_observation(observation)
-
+learner = DQNLearner(observation.shape[0], number_valid_actions)
+learner.update_target_network()
 number_current_frame, trained_episode, duration_episode, rewards_episode = 0, 0, 0, 0
 losses_episode, rewards, losses = [], [], []
 while number_current_frame < TRAINING_FRAMES:
