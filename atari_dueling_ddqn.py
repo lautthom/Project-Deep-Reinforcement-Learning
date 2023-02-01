@@ -9,14 +9,12 @@ import argparse
 from gym.wrappers import AtariPreprocessing, FrameStack
 
 
-
-
 class NeuralNetwork(torch.nn.Module):
 
     def __init__(self, input_size, output_size):
         super().__init__()
         self.ReLU = torch.nn.ReLU()
-        self.conv1 = torch.nn.Conv2d(in_channels=4, out_channels=32, kernel_size=8, stride=4)  # padding?
+        self.conv1 = torch.nn.Conv2d(in_channels=input_size, out_channels=32, kernel_size=8, stride=4)
         self.conv2 = torch.nn.Conv2d(32, 64, 4, stride=2)
         self.conv3 = torch.nn.Conv2d(64, 64, 3, stride=1)
         self.flatten = torch.nn.Flatten()
@@ -53,10 +51,6 @@ class DQNLearner:
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
 
     def get_action(self, observation, training=True):
-        #global steps_done
-        #eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
-        #steps_done += 1
-        #if random.random() < eps_threshold and training:
         if random.random() < self.epsilon and training:
             return env.action_space.sample()
         else:
@@ -73,46 +67,20 @@ class DQNLearner:
         last_observations, actions, rewards, observations, dones = unpack_batch(batch)
         actions = actions.type(torch.int64).unsqueeze(1)
 
-
         q_values = self.model(last_observations).gather(1, actions)
-
-
         with torch.no_grad():
-            #print(self.model(observations))
             best_actions = torch.argmax(self.model(observations), dim=1)
-            #print(best_actions)
             best_actions = best_actions.type(torch.int64).unsqueeze(1)
             next_q_values = self.target_net(observations).gather(1, best_actions)
-        #print(dones)
-
-
         next_q_values = torch.where(dones, torch.zeros(1, 1).to(device), next_q_values.squeeze(1))
-        #print(next_q_values)
-
-
-
         target = (next_q_values * DISCOUNT_FACTOR) + rewards
-        #print(target)
-
-
-
         target = torch.reshape(target, (BATCH_SIZE, 1))
-        #print(target)
-        #print(q_values)
 
         loss_fn = torch.nn.HuberLoss()
-
-        #print(f"{last_observations=},\n {actions=},\n {rewards=},\n {observations=},\n {dones=},\n {q_values=},\n {next_q_valuesA=},\n {next_q_values=},\n {target=}")
-
         loss = loss_fn(q_values, target)
-
         self.optimizer.zero_grad()
         loss.backward()
-
-        #torch.nn.utils.clip_grad_value_(self.model.parameters(), 100)
-
         self.optimizer.step()
-
         return loss
 
     def update_target_network(self):
@@ -162,6 +130,7 @@ def run_evaluation(episode_evaluation):
         if done or truncation:
             print(f"Episode: {episode_evaluation}, Reward: {reward_episode}")
             return reward_episode
+
 
 def plot_results(rewards, losses):
     mean_rewards = []
@@ -217,9 +186,7 @@ parser.add_argument("-f", "--final_exploration_frame", type=int,
                     help="choose the final exploration frame, after which the final exploration rate is used;"
                          " default is a 10th of total training frames")
 
-
 args = parser.parse_args()
-
 TRAINING_FRAMES = args.training_frames
 BATCH_SIZE = args.batch_size
 REPLAY_MEMORY_SIZE = args.replay_size
@@ -247,20 +214,14 @@ env = gym.make('ALE/Pong-v5',
 env = AtariPreprocessing(env, scale_obs=True)
 env = FrameStack(env, AGENT_HISTORY_LENGTH)
 number_valid_actions = env.action_space.n
+learner = DQNLearner(observation.shape[0], number_valid_actions)
+learner.update_target_network()
 
-number_current_frame = 0
-trained_episode = 0
 observation = env.reset()[0]
 observation = transform_observation(observation)
 
-learner = DQNLearner(observation[0], number_valid_actions)
-learner.update_target_network()
-
-losses_episode = []
-rewards = []
-losses = []
-rewards_episode = 0
-duration_episode = 0
+number_current_frame, trained_episode, duration_episode, rewards_episode = 0, 0, 0, 0
+losses_episode, rewards, losses = [], [], []
 while number_current_frame < TRAINING_FRAMES:
     action = learner.get_action(observation)
     last_observation = observation
@@ -291,9 +252,9 @@ while number_current_frame < TRAINING_FRAMES:
             losses.append(sum(losses_episode) / len(losses_episode))
         else:
             losses.append(0)
-        duration_episode = 0
-        rewards_episode = 0
+        duration_episode, rewards_episode = 0, 0
         losses_episode.clear()
+
         observation = env.reset()[0]
         observation = transform_observation(observation)
 
