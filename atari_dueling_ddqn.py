@@ -32,12 +32,15 @@ class NeuralNetwork(torch.nn.Module):
         x = self.conv3(x)
         x = self.ReLU(x)
         x = self.flatten(x)
-        y = self.dense_state1(x)
-        y = self.ReLU(y)
-        y = self.dense_state2(y)
+        if IS_DUELING_NETWORK:
+            y = self.dense_state1(x)
+            y = self.ReLU(y)
+            y = self.dense_state2(y)
         x = self.dense_advantage1(x)
         x = self.ReLU(x)
         x = self.dense_advantage2(x)
+        if not IS_DUELING_NETWORK:
+            return x
         return y + (x - torch.mean(x))
 
 
@@ -69,9 +72,10 @@ class DQNLearner:
 
         q_values = self.model(last_observations).gather(1, actions)
         with torch.no_grad():
-            best_actions = torch.argmax(self.model(observations), dim=1)
-            best_actions = best_actions.type(torch.int64).unsqueeze(1)
-            next_q_values = self.target_net(observations).gather(1, best_actions)
+            if IS_DDQN:
+                best_actions = torch.argmax(self.model(observations), dim=1)
+                actions = best_actions.type(torch.int64).unsqueeze(1)
+            next_q_values = self.target_net(observations).gather(1, actions)
         next_q_values = torch.where(dones, torch.zeros(1, 1).to(device), next_q_values.squeeze(1))
         target = (next_q_values * DISCOUNT_FACTOR) + rewards
         target = torch.reshape(target, (BATCH_SIZE, 1))
@@ -159,9 +163,9 @@ def plot_results(rewards, losses):
 parser = argparse.ArgumentParser(description="Run DQN or one of its extensions on Atari games")
 parser.add_argument("-t", "--train", action="store_true", help="if argument is given, new agent will be trained,"
                                                                " otherwise already trained agent will be loaded")
-parser.add_argument("-dqn", "--dqn", action="store_false",
+parser.add_argument("-dqn", "--dqn", action="store_true",
                     help="if argument is given, DQN will be used as algorithm, otherwise DDQN will be used")
-parser.add_argument("-sn", "--single_network", action="store_false",
+parser.add_argument("-sn", "--single_network", action="store_true",
                     help="if argument is given, single stream network is used, otherwise dueling network is used")
 parser.add_argument("-g", "--game", default="pong",
                     help='choose game that is played; default game is "Pong"')
@@ -187,7 +191,9 @@ parser.add_argument("-f", "--final_exploration_frame", type=int,
                          " default is a 10th of total training frames")
 
 args = parser.parse_args()
-TRAINING_FRAMES = args.training_frames
+IS_DDQN = args.dqn
+IS_DUELING_NETWORK = not args.single_network
+TRAINING_FRAMES = not args.training_frames
 BATCH_SIZE = args.batch_size
 REPLAY_MEMORY_SIZE = args.replay_size
 AGENT_HISTORY_LENGTH = 4
