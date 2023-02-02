@@ -6,6 +6,7 @@ from collections import deque
 import matplotlib.pyplot as plt
 import argparse
 import pandas as pd
+import pathlib
 
 from gym.wrappers import AtariPreprocessing, FrameStack
 
@@ -169,126 +170,135 @@ def plot_results(rewards, losses):
 
     plt.show()
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run DQN or one of its extensions on Atari games")
+    parser.add_argument("-dqn", "--dqn", action="store_true",
+                        help="if argument is given, DQN will be used as algorithm, otherwise DDQN will be used")
+    parser.add_argument("-sn", "--single_network", action="store_true",
+                        help="if argument is given, single stream network is used, otherwise dueling network is used")
+    parser.add_argument("-g", "--game", metavar="", default="pong",
+                        help='choose game that is played; default game is "Pong"')
+    parser.add_argument("-tf", "--training_frames", metavar="", default=1_000, type=int,
+                        help="choose the number of frames, that is used for training; default is 1,000,000 frames")
+    parser.add_argument("-b", "--batch_size", metavar="", default=32, type=int,
+                        help="choose the batch size, that is used for training; default is 32")
+    parser.add_argument("-r", "--replay_size", metavar="", default=100_000, type=int,
+                        help="choose the replay memory size, that is used for training; default is 100,000")
+    parser.add_argument("-t", "--target_update", metavar="", default=1_000, type=int,
+                        help="choose the frequency, with which the target network is updated; default is every 1,000 frames"
+                        )
+    parser.add_argument("-u", "--update_frequency", metavar="", default=4, type=int,
+                        help="choose the frequency, with which the policy network is updated; default is every 4 frames")
+    parser.add_argument("-l", "--learning_rate", metavar="", default=1e-4, type=float,
+                        help="choose the learning rate, that is used for training; default is 0.001")
+    parser.add_argument("-ie", "--initial_exploration", metavar="", default=1, type=float,
+                        help="choose the initial exploration rate; default is 1")
+    parser.add_argument("-fe", "--final_exploration", metavar="", default=0.02, type=float,
+                        help="choose the final exploration rate; default is 0.02")
+    parser.add_argument("-ff", "--final_exploration_frame", metavar="", type=int,
+                        help="choose the final exploration frame, after which the final exploration rate is used;"
+                             " default is a 10th of total training frames")
 
-parser = argparse.ArgumentParser(description="Run DQN or one of its extensions on Atari games")
-parser.add_argument("-dqn", "--dqn", action="store_true",
-                    help="if argument is given, DQN will be used as algorithm, otherwise DDQN will be used")
-parser.add_argument("-sn", "--single_network", action="store_true",
-                    help="if argument is given, single stream network is used, otherwise dueling network is used")
-parser.add_argument("-g", "--game", metavar="", default="pong",
-                    help='choose game that is played; default game is "Pong"')
-parser.add_argument("-tf", "--training_frames", metavar="", default=1_000, type=int,
-                    help="choose the number of frames, that is used for training; default is 1,000,000 frames")
-parser.add_argument("-b", "--batch_size", metavar="", default=32, type=int,
-                    help="choose the batch size, that is used for training; default is 32")
-parser.add_argument("-r", "--replay_size", metavar="", default=100_000, type=int,
-                    help="choose the replay memory size, that is used for training; default is 100,000")
-parser.add_argument("-t", "--target_update", metavar="", default=1_000, type=int,
-                    help="choose the frequency, with which the target network is updated; default is every 1,000 frames"
-                    )
-parser.add_argument("-u", "--update_frequency", metavar="", default=4, type=int,
-                    help="choose the frequency, with which the policy network is updated; default is every 4 frames")
-parser.add_argument("-l", "--learning_rate", metavar="", default=1e-4, type=float,
-                    help="choose the learning rate, that is used for training; default is 0.001")
-parser.add_argument("-ie", "--initial_exploration", metavar="", default=1, type=float,
-                    help="choose the initial exploration rate; default is 1")
-parser.add_argument("-fe", "--final_exploration", metavar="", default=0.02, type=float,
-                    help="choose the final exploration rate; default is 0.02")
-parser.add_argument("-ff", "--final_exploration_frame", metavar="", type=int,
-                    help="choose the final exploration frame, after which the final exploration rate is used;"
-                         " default is a 10th of total training frames")
+    args = parser.parse_args()
+    IS_DDQN = not args.dqn
+    IS_DUELING_NETWORK = not args.single_network
+    TRAINING_FRAMES = args.training_frames
+    BATCH_SIZE = args.batch_size
+    REPLAY_MEMORY_SIZE = args.replay_size
+    AGENT_HISTORY_LENGTH = 4
+    UPDATE_FREQUENCY = args.update_frequency
+    TARGET_NETWORK_UPDATE_FREQUENCY = args.target_update
+    DISCOUNT_FACTOR = 0.99
+    LEARNING_RATE = args.learning_rate
+    INITIAL_EXPLORATION = args.initial_exploration
+    FINAL_EXPLORATION = args.final_exploration
+    if args.final_exploration_frame:
+        FINAL_EXPLORATION_FRAME = args.final_exploration_frame
+    else:
+        FINAL_EXPLORATION_FRAME = TRAINING_FRAMES / 10
+    if FINAL_EXPLORATION_FRAME > 0:
+        EXPLORATION_DECAY = (INITIAL_EXPLORATION - FINAL_EXPLORATION) \
+                            / (FINAL_EXPLORATION_FRAME / TARGET_NETWORK_UPDATE_FREQUENCY)
+    else:
+        EXPLORATION_DECAY = 1
+    REPLAY_START_SIZE = 10_000
 
-args = parser.parse_args()
-IS_DDQN = not args.dqn
-IS_DUELING_NETWORK = not args.single_network
-TRAINING_FRAMES = args.training_frames
-BATCH_SIZE = args.batch_size
-REPLAY_MEMORY_SIZE = args.replay_size
-AGENT_HISTORY_LENGTH = 4
-TARGET_NETWORK_UPDATE_FREQUENCY = args.target_update
-DISCOUNT_FACTOR = 0.99
-UPDATE_FREQUENCY = args.update_frequency
-LEARNING_RATE = args.learning_rate
-INITIAL_EXPLORATION = args.initial_exploration
-FINAL_EXPLORATION = args.final_exploration
-if args.final_exploration_frame:
-    FINAL_EXPLORATION_FRAME = args.final_exploration_frame
-else:
-    FINAL_EXPLORATION_FRAME = TRAINING_FRAMES / 10
-if FINAL_EXPLORATION_FRAME > 0:
-    EXPLORATION_DECAY = (INITIAL_EXPLORATION - FINAL_EXPLORATION) \
-                        / (FINAL_EXPLORATION_FRAME / TARGET_NETWORK_UPDATE_FREQUENCY)
-else:
-    EXPLORATION_DECAY = 1
-REPLAY_START_SIZE = 10_000
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device} device")
-env = gym.make('ALE/' + args.game.lower().capitalize() + '-v5',
-               frameskip=1,  # no frameskip, as frameskip is applied in the AtariPreprocessing-wrapper
-               repeat_action_probability=0,  # repeat_action_probability set to 0 because not applied in original paper
-               full_action_space=False)
-env = AtariPreprocessing(env, scale_obs=True)
-env = FrameStack(env, AGENT_HISTORY_LENGTH)
-number_valid_actions = env.action_space.n
-observation = env.reset()[0]
-observation = transform_observation(observation)
-learner = DQNLearner(observation.shape[0], number_valid_actions)
-learner.update_target_network()
-number_current_frame, trained_episode, duration_episode, rewards_episode = 0, 0, 0, 0
-losses_episode, rewards, losses = [], [], []
-while number_current_frame < TRAINING_FRAMES:
-    action = learner.get_action(observation)
-    last_observation = observation
-
-    observation, reward, done, truncation, info = env.step(action)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device} device")
+    env = gym.make('ALE/' + args.game.lower().capitalize() + '-v5',
+                   frameskip=1,  # no frameskip, as frameskip is applied in the AtariPreprocessing-wrapper
+                   repeat_action_probability=0,  # repeat_action_probability set to 0 because not applied in original paper
+                   full_action_space=False)
+    env = AtariPreprocessing(env, scale_obs=True)
+    env = FrameStack(env, AGENT_HISTORY_LENGTH)
+    number_valid_actions = env.action_space.n
+    observation = env.reset()[0]
     observation = transform_observation(observation)
-    reward = reward_clipping(reward)
-    rewards_episode += reward
+    learner = DQNLearner(observation.shape[0], number_valid_actions)
+    learner.update_target_network()
+    number_current_frame, trained_episode, duration_episode, rewards_episode = 0, 0, 0, 0
+    losses_episode, rewards, losses = [], [], []
+    while number_current_frame < TRAINING_FRAMES:
+        action = learner.get_action(observation)
+        last_observation = observation
 
-    learner.add_memory(last_observation, action, reward, observation, done)
-
-    if number_current_frame % UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
-        loss = learner.learn()
-        losses_episode.append(loss.item())
-
-    if number_current_frame % TARGET_NETWORK_UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
-        learner.update_target_network()
-        learner.update_epsilon()
-
-    number_current_frame += 1
-    duration_episode += 1
-    if done or truncation:
-        trained_episode += 1
-        print(f"Frame Number: {number_current_frame}, Episode: {trained_episode}, "
-              f"Duration: {duration_episode}, Reward: {rewards_episode}")
-        rewards.append(rewards_episode)
-        if losses_episode:
-            losses.append(sum(losses_episode) / len(losses_episode))
-        else:
-            losses.append(0)
-        duration_episode, rewards_episode = 0, 0
-        losses_episode.clear()
-
-        observation = env.reset()[0]
+        observation, reward, done, truncation, info = env.step(action)
         observation = transform_observation(observation)
+        reward = reward_clipping(reward)
+        rewards_episode += reward
 
-print('Training complete')
+        learner.add_memory(last_observation, action, reward, observation, done)
 
-rewards_evaluation = []
+        if number_current_frame % UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
+            loss = learner.learn()
+            losses_episode.append(loss.item())
 
-for i in range(100):
-    rewards_evaluation.append(run_evaluation(i + 1))
-env.close()
+        if number_current_frame % TARGET_NETWORK_UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
+            learner.update_target_network()
+            learner.update_epsilon()
 
-plot_results(rewards, losses)
-print(f"Result evaluation: {sum(rewards_evaluation) / len(rewards_evaluation)}")
-hyperparameters = {"training_frames": TRAINING_FRAMES, "batch_size": BATCH_SIZE, "replay_memory_size":
-                   REPLAY_MEMORY_SIZE, "target_network_update_frequency": TARGET_NETWORK_UPDATE_FREQUENCY,
-                   "policy_network_update_frequency": UPDATE_FREQUENCY, "learning_rate": LEARNING_RATE,
-                   "initial_exploration": INITIAL_EXPLORATION, "final_exploration": FINAL_EXPLORATION,
-                   "final_exploration_frame": FINAL_EXPLORATION_FRAME}
-evaluation_results = pd.DataFrame(zip(hyperparameters, rewards_evaluation), columns=["Hyperparameters",
-                                                                                     "Rewards Evaluation"])
-evaluation_results.to_csv(args.game.lower() + "_dueling" if IS_DUELING_NETWORK else "_single" +
-                                                                                    "_ddqn" if IS_DDQN else "_dqn")
+        number_current_frame += 1
+        duration_episode += 1
+        if done or truncation:
+            trained_episode += 1
+            print(f"Frame Number: {number_current_frame}, Episode: {trained_episode}, "
+                  f"Duration: {duration_episode}, Reward: {rewards_episode}")
+            rewards.append(rewards_episode)
+            if losses_episode:
+                losses.append(sum(losses_episode) / len(losses_episode))
+            else:
+                losses.append(0)
+            duration_episode, rewards_episode = 0, 0
+            losses_episode.clear()
+
+            observation = env.reset()[0]
+            observation = transform_observation(observation)
+
+    print('Training complete')
+
+    rewards_evaluation = []
+
+    for i in range(100):
+        rewards_evaluation.append(run_evaluation(i + 1))
+    env.close()
+
+    plot_results(rewards, losses)
+    print(f"Result evaluation: {sum(rewards_evaluation) / len(rewards_evaluation)}")
+    hyperparameters = ["Training frames", "Batch size", "Replay memory size", "Policy Network Update Frequency",
+                       "Target Network Update Frequency", "Learning Rate", "Initial Exploration", "Final exploration",
+                       "Final exploration frame"]
+    hyperparmeters_values = [TRAINING_FRAMES, BATCH_SIZE, REPLAY_MEMORY_SIZE, UPDATE_FREQUENCY,
+                             TARGET_NETWORK_UPDATE_FREQUENCY, LEARNING_RATE, INITIAL_EXPLORATION, FINAL_EXPLORATION,
+                             FINAL_EXPLORATION_FRAME]
+    hyperparameters_dataframe = pd.DataFrame({"Hyperparameters": hyperparameters, "Hyperparameter values":
+                                             hyperparmeters_values})
+    results_dataframe = pd.DataFrame({"Results Evaluation": rewards_evaluation})
+    game = args.game.lower()
+    network = "_dueling" if IS_DUELING_NETWORK else "_single"
+    algorithm = "_ddqn" if IS_DDQN else "_dqn"
+    file_name = f"{game}{network}{algorithm}.csv"
+    hyperparameter_file_name = f"{game}{network}{algorithm}_hyperparameters.csv"
+    path_file = pathlib.Path(f"results/{file_name}")
+    path_hyperparameter_file = pathlib.Path(f"results/{hyperparameter_file_name}")
+    results_dataframe.to_csv(path_file, index=False)
+    hyperparameters_dataframe.to_csv(path_hyperparameter_file, index=False)
