@@ -147,7 +147,6 @@ def plot_results(rewards, losses):
         mean_losses.append(sum(losses[i:100+i]) / 100)
 
     plt.figure()
-    title = "Results"
     if IS_DDQN:
         title = "Results DDQN"
     else:
@@ -169,6 +168,39 @@ def plot_results(rewards, losses):
     plt.xlabel('Episode')
 
     plt.show()
+
+
+def make_csv_files(rewards_evaluation):
+    game = args.game.lower()
+    network = "_dueling" if IS_DUELING_NETWORK else "_single"
+    algorithm = "_ddqn" if IS_DDQN else "_dqn"
+    file_name = f"{game}{network}{algorithm}"
+    make_hyperparameter_csv_file(file_name)
+    make_results_csv_file(rewards_evaluation, file_name)
+
+
+def make_hyperparameter_csv_file(name):
+    hyperparameters = ["Training frames", "Batch size", "Replay memory size", "Policy Network Update Frequency",
+                       "Target Network Update Frequency", "Learning Rate", "Initial Exploration", "Final exploration",
+                       "Final exploration frame"]
+    hyperparmeters_values = [TRAINING_FRAMES, BATCH_SIZE, REPLAY_MEMORY_SIZE, UPDATE_FREQUENCY,
+                             TARGET_NETWORK_UPDATE_FREQUENCY, LEARNING_RATE, INITIAL_EXPLORATION, FINAL_EXPLORATION,
+                             FINAL_EXPLORATION_FRAME]
+    hyperparameters_dataframe = pd.DataFrame({"Hyperparameters": hyperparameters, "Hyperparameter values":
+                                              hyperparmeters_values})
+
+    file_name = f"{name}_hyperparameters.csv"
+    path_file = pathlib.Path(f"results/{file_name}")
+    hyperparameters_dataframe.to_csv(path_file, index=False)
+
+
+def make_results_csv_file(rewards, name):
+    results_dataframe = pd.DataFrame({"Results Evaluation": rewards})
+
+    file_name = f"{name}.csv"
+    path_file = pathlib.Path(f"results/{file_name}")
+    results_dataframe.to_csv(path_file, index=False)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run DQN or one of its extensions on Atari games")
@@ -282,23 +314,6 @@ if __name__ == "__main__":
         rewards_evaluation.append(run_evaluation(i + 1))
     env.close()
 
+    make_csv_files(rewards_evaluation)
     plot_results(rewards, losses)
     print(f"Result evaluation: {sum(rewards_evaluation) / len(rewards_evaluation)}")
-    hyperparameters = ["Training frames", "Batch size", "Replay memory size", "Policy Network Update Frequency",
-                       "Target Network Update Frequency", "Learning Rate", "Initial Exploration", "Final exploration",
-                       "Final exploration frame"]
-    hyperparmeters_values = [TRAINING_FRAMES, BATCH_SIZE, REPLAY_MEMORY_SIZE, UPDATE_FREQUENCY,
-                             TARGET_NETWORK_UPDATE_FREQUENCY, LEARNING_RATE, INITIAL_EXPLORATION, FINAL_EXPLORATION,
-                             FINAL_EXPLORATION_FRAME]
-    hyperparameters_dataframe = pd.DataFrame({"Hyperparameters": hyperparameters, "Hyperparameter values":
-                                             hyperparmeters_values})
-    results_dataframe = pd.DataFrame({"Results Evaluation": rewards_evaluation})
-    game = args.game.lower()
-    network = "_dueling" if IS_DUELING_NETWORK else "_single"
-    algorithm = "_ddqn" if IS_DDQN else "_dqn"
-    file_name = f"{game}{network}{algorithm}.csv"
-    hyperparameter_file_name = f"{game}{network}{algorithm}_hyperparameters.csv"
-    path_file = pathlib.Path(f"results/{file_name}")
-    path_hyperparameter_file = pathlib.Path(f"results/{hyperparameter_file_name}")
-    results_dataframe.to_csv(path_file, index=False)
-    hyperparameters_dataframe.to_csv(path_hyperparameter_file, index=False)
