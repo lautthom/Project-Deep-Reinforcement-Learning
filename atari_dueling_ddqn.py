@@ -5,6 +5,7 @@ import random
 from collections import deque
 import matplotlib.pyplot as plt
 import argparse
+import pandas as pd
 
 from gym.wrappers import AtariPreprocessing, FrameStack
 
@@ -170,37 +171,34 @@ def plot_results(rewards, losses):
 
 
 parser = argparse.ArgumentParser(description="Run DQN or one of its extensions on Atari games")
-parser.add_argument("-t", "--train", action="store_true", help="if argument is given, new agent will be trained,"
-                                                               " otherwise already trained agent will be loaded")
 parser.add_argument("-dqn", "--dqn", action="store_true",
                     help="if argument is given, DQN will be used as algorithm, otherwise DDQN will be used")
 parser.add_argument("-sn", "--single_network", action="store_true",
                     help="if argument is given, single stream network is used, otherwise dueling network is used")
-parser.add_argument("-g", "--game", default="pong",
+parser.add_argument("-g", "--game", metavar="", default="pong",
                     help='choose game that is played; default game is "Pong"')
-parser.add_argument("-tf", "--training_frames", default=1_000_000, type=int,
+parser.add_argument("-tf", "--training_frames", metavar="", default=1_000, type=int,
                     help="choose the number of frames, that is used for training; default is 1,000,000 frames")
-parser.add_argument("-b", "--batch_size", default=128, type=int,
-                    help="choose the batch size, that is used for training; default is 128 frames")
-parser.add_argument("-r", "--replay_size", default=100_000, type=int,
+parser.add_argument("-b", "--batch_size", metavar="", default=32, type=int,
+                    help="choose the batch size, that is used for training; default is 32")
+parser.add_argument("-r", "--replay_size", metavar="", default=100_000, type=int,
                     help="choose the replay memory size, that is used for training; default is 100,000")
-parser.add_argument("-tu", "--target_update", default=1_000, type=int,
+parser.add_argument("-t", "--target_update", metavar="", default=1_000, type=int,
                     help="choose the frequency, with which the target network is updated; default is every 1,000 frames"
                     )
-parser.add_argument("-u", "--update_frequency", default=16, type=int,
-                    help="choose the frequency, with which the policy network is updated; default is every 16 frames")
-parser.add_argument("-l", "--learning_rate", default=2e-4, type=float,
-                    help="choose the learning rate, that is used for training; default is 0.002")
-parser.add_argument("-ie", "--initial_exploration", default=1, type=float,
+parser.add_argument("-u", "--update_frequency", metavar="", default=4, type=int,
+                    help="choose the frequency, with which the policy network is updated; default is every 4 frames")
+parser.add_argument("-l", "--learning_rate", metavar="", default=1e-4, type=float,
+                    help="choose the learning rate, that is used for training; default is 0.001")
+parser.add_argument("-ie", "--initial_exploration", metavar="", default=1, type=float,
                     help="choose the initial exploration rate; default is 1")
-parser.add_argument("-fe", "--final_exploration", default=0.02, type=float,
-                    help="choose the initial exploration rate; default is 1")
-parser.add_argument("-f", "--final_exploration_frame", type=int,
+parser.add_argument("-fe", "--final_exploration", metavar="", default=0.02, type=float,
+                    help="choose the final exploration rate; default is 0.02")
+parser.add_argument("-ff", "--final_exploration_frame", metavar="", type=int,
                     help="choose the final exploration frame, after which the final exploration rate is used;"
                          " default is a 10th of total training frames")
 
 args = parser.parse_args()
-IS_TRAINING = args.train
 IS_DDQN = not args.dqn
 IS_DUELING_NETWORK = not args.single_network
 TRAINING_FRAMES = args.training_frames
@@ -226,7 +224,7 @@ REPLAY_START_SIZE = 10_000
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
-env = gym.make('ALE/' + args.game.capitalize() + '-v5',
+env = gym.make('ALE/' + args.game.lower().capitalize() + '-v5',
                frameskip=1,  # no frameskip, as frameskip is applied in the AtariPreprocessing-wrapper
                repeat_action_probability=0,  # repeat_action_probability set to 0 because not applied in original paper
                full_action_space=False)
@@ -276,10 +274,21 @@ while number_current_frame < TRAINING_FRAMES:
         observation = transform_observation(observation)
 
 print('Training complete')
-plot_results(rewards, losses)
 
-rewards.clear()
+rewards_evaluation = []
+
 for i in range(100):
-    rewards.append(run_evaluation(i + 1))
-print(sum(rewards) / len(rewards))
+    rewards_evaluation.append(run_evaluation(i + 1))
 env.close()
+
+plot_results(rewards, losses)
+print(f"Result evaluation: {sum(rewards_evaluation) / len(rewards_evaluation)}")
+hyperparameters = {"training_frames": TRAINING_FRAMES, "batch_size": BATCH_SIZE, "replay_memory_size":
+                   REPLAY_MEMORY_SIZE, "target_network_update_frequency": TARGET_NETWORK_UPDATE_FREQUENCY,
+                   "policy_network_update_frequency": UPDATE_FREQUENCY, "learning_rate": LEARNING_RATE,
+                   "initial_exploration": INITIAL_EXPLORATION, "final_exploration": FINAL_EXPLORATION,
+                   "final_exploration_frame": FINAL_EXPLORATION_FRAME}
+evaluation_results = pd.DataFrame(zip(hyperparameters, rewards_evaluation), columns=["Hyperparameters",
+                                                                                     "Rewards Evaluation"])
+evaluation_results.to_csv(args.game.lower() + "_dueling" if IS_DUELING_NETWORK else "_single" +
+                                                                                    "_ddqn" if IS_DDQN else "_dqn")
