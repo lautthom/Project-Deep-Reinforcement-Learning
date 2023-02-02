@@ -147,14 +147,8 @@ def plot_results(rewards, losses):
         mean_losses.append(sum(losses[i:100+i]) / 100)
 
     plt.figure()
-    if IS_DDQN:
-        title = "Results DDQN"
-    else:
-        title = "Results DQN"
-    if IS_DUELING_NETWORK:
-        title += " dual-stream"
-    else:
-        title += " single-stream"
+    title = "Results DDQN" if IS_DDQN else "Results DQN"
+    title += " dual-stream" if IS_DUELING_NETWORK else " single-stream"
     plt.suptitle(title)
     plt.subplot(2, 1, 1)
     plt.plot(rewards)
@@ -204,6 +198,9 @@ def make_results_csv_file(rewards, name):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run DQN or one of its extensions on Atari games")
+    parser.add_argument("-t", "--training", action="store_true",
+                        help="if argument is given, model will be trained, otherwise already trained model will be "
+                             "loaded")
     parser.add_argument("-dqn", "--dqn", action="store_true",
                         help="if argument is given, DQN will be used as algorithm, otherwise DDQN will be used")
     parser.add_argument("-sn", "--single_network", action="store_true",
@@ -216,11 +213,13 @@ if __name__ == "__main__":
                         help="choose the batch size, that is used for training; default is 32")
     parser.add_argument("-r", "--replay_size", metavar="", default=100_000, type=int,
                         help="choose the replay memory size, that is used for training; default is 100,000")
-    parser.add_argument("-t", "--target_update", metavar="", default=1_000, type=int,
-                        help="choose the frequency, with which the target network is updated; default is every 1,000 frames"
+    parser.add_argument("-tu", "--target_update", metavar="", default=1_000, type=int,
+                        help="choose the frequency, with which the target network is updated; default is every 1,000 "
+                             "frames"
                         )
     parser.add_argument("-u", "--update_frequency", metavar="", default=4, type=int,
-                        help="choose the frequency, with which the policy network is updated; default is every 4 frames")
+                        help="choose the frequency, with which the policy network is updated; default is every 4 frames"
+                        )
     parser.add_argument("-l", "--learning_rate", metavar="", default=1e-4, type=float,
                         help="choose the learning rate, that is used for training; default is 0.001")
     parser.add_argument("-ie", "--initial_exploration", metavar="", default=1, type=float,
@@ -232,6 +231,7 @@ if __name__ == "__main__":
                              " default is a 10th of total training frames")
 
     args = parser.parse_args()
+    IS_TRAINING = args.train
     IS_DDQN = not args.dqn
     IS_DUELING_NETWORK = not args.single_network
     TRAINING_FRAMES = args.training_frames
@@ -268,50 +268,56 @@ if __name__ == "__main__":
     observation = transform_observation(observation)
     learner = DQNLearner(observation.shape[0], number_valid_actions)
     learner.update_target_network()
-    number_current_frame, trained_episode, duration_episode, rewards_episode = 0, 0, 0, 0
-    losses_episode, rewards, losses = [], [], []
-    while number_current_frame < TRAINING_FRAMES:
-        action = learner.get_action(observation)
-        last_observation = observation
+    if IS_TRAINING:
+        number_current_frame, trained_episode, duration_episode, rewards_episode = 0, 0, 0, 0
+        losses_episode, rewards, losses = [], [], []
+        while number_current_frame < TRAINING_FRAMES:
+            action = learner.get_action(observation)
+            last_observation = observation
 
-        observation, reward, done, truncation, info = env.step(action)
-        observation = transform_observation(observation)
-        reward = reward_clipping(reward)
-        rewards_episode += reward
-
-        learner.add_memory(last_observation, action, reward, observation, done)
-
-        if number_current_frame % UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
-            loss = learner.learn()
-            losses_episode.append(loss.item())
-
-        if number_current_frame % TARGET_NETWORK_UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
-            learner.update_target_network()
-            learner.update_epsilon()
-
-        number_current_frame += 1
-        duration_episode += 1
-        if done or truncation:
-            trained_episode += 1
-            print(f"Frame Number: {number_current_frame}, Episode: {trained_episode}, "
-                  f"Duration: {duration_episode}, Reward: {rewards_episode}")
-            rewards.append(rewards_episode)
-            if losses_episode:
-                losses.append(sum(losses_episode) / len(losses_episode))
-            else:
-                losses.append(0)
-            duration_episode, rewards_episode = 0, 0
-            losses_episode.clear()
-
-            observation = env.reset()[0]
+            observation, reward, done, truncation, info = env.step(action)
             observation = transform_observation(observation)
+            reward = reward_clipping(reward)
+            rewards_episode += reward
 
-    print('Training complete')
+            learner.add_memory(last_observation, action, reward, observation, done)
+
+            if number_current_frame % UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
+                loss = learner.learn()
+                losses_episode.append(loss.item())
+
+            if number_current_frame % TARGET_NETWORK_UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
+                learner.update_target_network()
+                learner.update_epsilon()
+
+            number_current_frame += 1
+            duration_episode += 1
+            if done or truncation:
+                trained_episode += 1
+                print(f"Frame Number: {number_current_frame}, Episode: {trained_episode}, "
+                      f"Duration: {duration_episode}, Reward: {rewards_episode}")
+                rewards.append(rewards_episode)
+                if losses_episode:
+                    losses.append(sum(losses_episode) / len(losses_episode))
+                else:
+                    losses.append(0)
+                duration_episode, rewards_episode = 0, 0
+                losses_episode.clear()
+
+                observation = env.reset()[0]
+                observation = transform_observation(observation)
+
+        #TODO save model
+
+        print('Training complete')
+    else:
+        #TODO model load
 
     rewards_evaluation = []
 
     for i in range(100):
         rewards_evaluation.append(run_evaluation(i + 1))
+    #TODO save video
     env.close()
 
     make_csv_files(rewards_evaluation)
