@@ -120,6 +120,47 @@ def reward_clipping(reward):
     return 1 if reward > 0 else -1 if reward < 0 else 0
 
 
+def train_model(observation):
+    number_current_frame, trained_episode, duration_episode, rewards_episode = 0, 0, 0, 0
+    losses_episode, rewards, losses = [], [], []
+    while number_current_frame < TRAINING_FRAMES:
+        action = learner.get_action(observation)
+        last_observation = observation
+
+        observation, reward, done, truncation, info = env.step(action)
+        observation = transform_observation(observation)
+        reward = reward_clipping(reward)
+        rewards_episode += reward
+
+        learner.add_memory(last_observation, action, reward, observation, done)
+
+        if number_current_frame % UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
+            loss = learner.learn()
+            losses_episode.append(loss.item())
+
+        if number_current_frame % TARGET_NETWORK_UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
+            learner.update_target_network()
+            learner.update_epsilon()
+
+        number_current_frame += 1
+        duration_episode += 1
+        if done or truncation:
+            trained_episode += 1
+            print(f"Frame Number: {number_current_frame}, Episode: {trained_episode}, "
+                  f"Duration: {duration_episode}, Reward: {rewards_episode}")
+            rewards.append(rewards_episode)
+            if losses_episode:
+                losses.append(sum(losses_episode) / len(losses_episode))
+            else:
+                losses.append(0)
+            duration_episode, rewards_episode = 0, 0
+            losses_episode.clear()
+
+            observation = env.reset()[0]
+            observation = transform_observation(observation)
+    plot_results(rewards, losses)
+
+
 def run_evaluation(episode_evaluation):
     observation = env.reset()[0]
     observation = transform_observation(observation)
@@ -152,25 +193,21 @@ def plot_results(rewards, losses):
     plt.suptitle(title)
     plt.subplot(2, 1, 1)
     plt.plot(rewards)
-    plt.plot(range(99, len(mean_rewards) + 99), mean_rewards, color='orange')
-    plt.ylabel('Rewards')
+    plt.plot(range(99, len(mean_rewards) + 99), mean_rewards, color="orange")
+    plt.ylabel("Rewards")
 
     plt.subplot(2, 1, 2)
     plt.plot(losses)
-    plt.plot(range(99, len(mean_losses) + 99), mean_losses, color='orange')
-    plt.ylabel('Losses')
-    plt.xlabel('Episode')
+    plt.plot(range(99, len(mean_losses) + 99), mean_losses, color="orange")
+    plt.ylabel("Losses")
+    plt.xlabel("Episode")
 
     plt.show()
 
 
-def make_csv_files(rewards_evaluation):
-    game = args.game.lower()
-    network = "_dueling" if IS_DUELING_NETWORK else "_single"
-    algorithm = "_ddqn" if IS_DDQN else "_dqn"
-    file_name = f"{game}{network}{algorithm}"
-    make_hyperparameter_csv_file(file_name)
-    make_results_csv_file(rewards_evaluation, file_name)
+def make_csv_files(rewards_evaluation, name):
+    make_hyperparameter_csv_file(name)
+    make_results_csv_file(rewards_evaluation, name)
 
 
 def make_hyperparameter_csv_file(name):
@@ -196,6 +233,13 @@ def make_results_csv_file(rewards, name):
     results_dataframe.to_csv(path_file, index=False)
 
 
+def get_file_name():
+    game = args.game.lower()
+    network = "_dueling" if IS_DUELING_NETWORK else "_single"
+    algorithm = "_ddqn" if IS_DDQN else "_dqn"
+    file_name = f"{game}{network}{algorithm}"
+    return file_name
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run DQN or one of its extensions on Atari games")
     parser.add_argument("-t", "--training", action="store_true",
@@ -207,21 +251,21 @@ if __name__ == "__main__":
                         help="if argument is given, single stream network is used, otherwise dueling network is used")
     parser.add_argument("-g", "--game", metavar="", default="pong",
                         help='choose game that is played; default game is "Pong"')
-    parser.add_argument("-tf", "--training_frames", metavar="", default=1_000, type=int,
-                        help="choose the number of frames, that is used for training; default is 1,000,000 frames")
-    parser.add_argument("-b", "--batch_size", metavar="", default=32, type=int,
-                        help="choose the batch size, that is used for training; default is 32")
+    parser.add_argument("-tf", "--training_frames", metavar="", default=5_000_000, type=int,
+                        help="choose the number of frames, that is used for training; default is 5,000,000 frames")
+    parser.add_argument("-b", "--batch_size", metavar="", default=128, type=int,
+                        help="choose the batch size, that is used for training; default is 128")
     parser.add_argument("-r", "--replay_size", metavar="", default=100_000, type=int,
                         help="choose the replay memory size, that is used for training; default is 100,000")
     parser.add_argument("-tu", "--target_update", metavar="", default=1_000, type=int,
                         help="choose the frequency, with which the target network is updated; default is every 1,000 "
                              "frames"
                         )
-    parser.add_argument("-u", "--update_frequency", metavar="", default=4, type=int,
-                        help="choose the frequency, with which the policy network is updated; default is every 4 frames"
-                        )
-    parser.add_argument("-l", "--learning_rate", metavar="", default=1e-4, type=float,
-                        help="choose the learning rate, that is used for training; default is 0.001")
+    parser.add_argument("-u", "--update_frequency", metavar="", default=16, type=int,
+                        help="choose the frequency, with which the policy network is updated; default is every 16 "
+                             "frames")
+    parser.add_argument("-l", "--learning_rate", metavar="", default=2e-4, type=float,
+                        help="choose the learning rate, that is used for training; default is 0.002")
     parser.add_argument("-ie", "--initial_exploration", metavar="", default=1, type=float,
                         help="choose the initial exploration rate; default is 1")
     parser.add_argument("-fe", "--final_exploration", metavar="", default=0.02, type=float,
@@ -231,7 +275,7 @@ if __name__ == "__main__":
                              " default is a 10th of total training frames")
 
     args = parser.parse_args()
-    IS_TRAINING = args.train
+    IS_TRAINING = args.training
     IS_DDQN = not args.dqn
     IS_DUELING_NETWORK = not args.single_network
     TRAINING_FRAMES = args.training_frames
@@ -268,58 +312,23 @@ if __name__ == "__main__":
     observation = transform_observation(observation)
     learner = DQNLearner(observation.shape[0], number_valid_actions)
     learner.update_target_network()
+    name = get_file_name()
+
     if IS_TRAINING:
-        number_current_frame, trained_episode, duration_episode, rewards_episode = 0, 0, 0, 0
-        losses_episode, rewards, losses = [], [], []
-        while number_current_frame < TRAINING_FRAMES:
-            action = learner.get_action(observation)
-            last_observation = observation
-
-            observation, reward, done, truncation, info = env.step(action)
-            observation = transform_observation(observation)
-            reward = reward_clipping(reward)
-            rewards_episode += reward
-
-            learner.add_memory(last_observation, action, reward, observation, done)
-
-            if number_current_frame % UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
-                loss = learner.learn()
-                losses_episode.append(loss.item())
-
-            if number_current_frame % TARGET_NETWORK_UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
-                learner.update_target_network()
-                learner.update_epsilon()
-
-            number_current_frame += 1
-            duration_episode += 1
-            if done or truncation:
-                trained_episode += 1
-                print(f"Frame Number: {number_current_frame}, Episode: {trained_episode}, "
-                      f"Duration: {duration_episode}, Reward: {rewards_episode}")
-                rewards.append(rewards_episode)
-                if losses_episode:
-                    losses.append(sum(losses_episode) / len(losses_episode))
-                else:
-                    losses.append(0)
-                duration_episode, rewards_episode = 0, 0
-                losses_episode.clear()
-
-                observation = env.reset()[0]
-                observation = transform_observation(observation)
-
-        #TODO save model
-
-        print('Training complete')
+        train_model(observation)
+        path_file = pathlib.Path(f"models/{name}.pth")
+        torch.save(learner.model, path_file)
+        print("Training complete")
     else:
-        #TODO model load
+        path_file = pathlib.Path(f"models/{name}.pth")
+        torch.load(path_file)
 
     rewards_evaluation = []
 
     for i in range(100):
         rewards_evaluation.append(run_evaluation(i + 1))
-    #TODO save video
     env.close()
 
-    make_csv_files(rewards_evaluation)
-    plot_results(rewards, losses)
+    make_csv_files(rewards_evaluation, name)
+
     print(f"Result evaluation: {sum(rewards_evaluation) / len(rewards_evaluation)}")
