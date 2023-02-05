@@ -76,8 +76,10 @@ class DQNLearner:
         with torch.no_grad():
             if IS_DDQN:
                 best_actions = torch.argmax(self.model(observations), dim=1)
-                actions = best_actions.type(torch.int64).unsqueeze(1)
-            next_q_values = self.target_net(observations).gather(1, actions)
+                best_actions = best_actions.type(torch.int64).unsqueeze(1)
+                next_q_values = self.target_net(observations).gather(1, best_actions)
+            if not IS_DDQN:
+                next_q_values = self.target_net(observations).max(1)[0]
         next_q_values = torch.where(dones, torch.zeros(1, 1).to(device), next_q_values.squeeze(1))
         target = (next_q_values * DISCOUNT_FACTOR) + rewards
         target = torch.reshape(target, (BATCH_SIZE, 1))
@@ -214,11 +216,11 @@ def make_hyperparameter_csv_file(name):
     hyperparameters = ["Training frames", "Batch size", "Replay memory size", "Policy Network Update Frequency",
                        "Target Network Update Frequency", "Learning Rate", "Initial Exploration", "Final exploration",
                        "Final exploration frame"]
-    hyperparmeters_values = [TRAINING_FRAMES, BATCH_SIZE, REPLAY_MEMORY_SIZE, UPDATE_FREQUENCY,
+    hyperparameters_values = [TRAINING_FRAMES, BATCH_SIZE, REPLAY_MEMORY_SIZE, UPDATE_FREQUENCY,
                              TARGET_NETWORK_UPDATE_FREQUENCY, LEARNING_RATE, INITIAL_EXPLORATION, FINAL_EXPLORATION,
                              FINAL_EXPLORATION_FRAME]
     hyperparameters_dataframe = pd.DataFrame({"Hyperparameters": hyperparameters, "Hyperparameter values":
-                                              hyperparmeters_values})
+                                              hyperparameters_values})
 
     file_name = f"{name}_hyperparameters.csv"
     path_file = pathlib.Path(f"results/{file_name}")
@@ -240,6 +242,7 @@ def get_file_name():
     file_name = f"{game}{network}{algorithm}"
     return file_name
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run DQN or one of its extensions on Atari games")
     parser.add_argument("-t", "--training", action="store_true",
@@ -253,19 +256,18 @@ if __name__ == "__main__":
                         help='choose game that is played; default game is "Pong"')
     parser.add_argument("-tf", "--training_frames", metavar="", default=5_000_000, type=int,
                         help="choose the number of frames, that is used for training; default is 5,000,000 frames")
-    parser.add_argument("-b", "--batch_size", metavar="", default=128, type=int,
-                        help="choose the batch size, that is used for training; default is 128")
+    parser.add_argument("-b", "--batch_size", metavar="", default=32, type=int,
+                        help="choose the batch size, that is used for training; default is 32")
     parser.add_argument("-r", "--replay_size", metavar="", default=100_000, type=int,
                         help="choose the replay memory size, that is used for training; default is 100,000")
     parser.add_argument("-tu", "--target_update", metavar="", default=1_000, type=int,
                         help="choose the frequency, with which the target network is updated; default is every 1,000 "
-                             "frames"
-                        )
-    parser.add_argument("-u", "--update_frequency", metavar="", default=16, type=int,
-                        help="choose the frequency, with which the policy network is updated; default is every 16 "
                              "frames")
-    parser.add_argument("-l", "--learning_rate", metavar="", default=2e-4, type=float,
-                        help="choose the learning rate, that is used for training; default is 0.002")
+    parser.add_argument("-u", "--update_frequency", metavar="", default=4, type=int,
+                        help="choose the frequency, with which the policy network is updated; default is every 4 frames"
+                        )
+    parser.add_argument("-l", "--learning_rate", metavar="", default=1e-4, type=float,
+                        help="choose the learning rate, that is used for training; default is 0.004")
     parser.add_argument("-ie", "--initial_exploration", metavar="", default=1, type=float,
                         help="choose the initial exploration rate; default is 1")
     parser.add_argument("-fe", "--final_exploration", metavar="", default=0.02, type=float,
@@ -321,7 +323,7 @@ if __name__ == "__main__":
         print("Training complete")
     else:
         path_file = pathlib.Path(f"models/{name}.pth")
-        torch.load(path_file)
+        learner.model = torch.load(path_file)
 
     rewards_evaluation = []
 
