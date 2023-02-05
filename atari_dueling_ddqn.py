@@ -78,9 +78,10 @@ class DQNLearner:
                 best_actions = torch.argmax(self.model(observations), dim=1)
                 best_actions = best_actions.type(torch.int64).unsqueeze(1)
                 next_q_values = self.target_net(observations).gather(1, best_actions)
+                next_q_values = next_q_values.squeeze(1)
             if not IS_DDQN:
                 next_q_values = self.target_net(observations).max(1)[0]
-        next_q_values = torch.where(dones, torch.zeros(1, 1).to(device), next_q_values.squeeze(1))
+        next_q_values = torch.where(dones, torch.zeros(1, 1).to(device), next_q_values)
         target = (next_q_values * DISCOUNT_FACTOR) + rewards
         target = torch.reshape(target, (BATCH_SIZE, 1))
 
