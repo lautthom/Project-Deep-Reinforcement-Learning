@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import argparse
 import pandas as pd
 import pathlib
-
+import statistics
 from gym.wrappers import AtariPreprocessing, FrameStack
 
 
@@ -53,7 +53,8 @@ class DQNLearner:
         self.memory = deque(maxlen=REPLAY_MEMORY_SIZE)
         self.model = NeuralNetwork(dim_observations, dim_actions).to(device)
         self.target_net = NeuralNetwork(dim_observations, dim_actions).to(device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
+        #self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
+        self.optimizer = torch.optim.RMSprop(self.model.parameters(), lr=LEARNING_RATE, alpha=0.95, eps=0.01)
 
     def get_action(self, observation, training=True):
         if random.random() < self.epsilon and training:
@@ -165,21 +166,62 @@ def train_model(observation):
 
 
 def run_evaluation(episode_evaluation):
-    observation = env.reset()[0]
+    observation, info = env.reset()
+    observation, _, _, _, _ = env.step(1)
     observation = transform_observation(observation)
     reward_episode = 0
     duration_episode = 0
+    lives = info["lives"]
     while True:
         action = learner.get_action(observation, training=False)
-        observation, reward, done, truncation, _ = env.step(action)
+        observation, reward, done, truncation, info = env.step(action)
         observation = transform_observation(observation)
-        reward = reward_clipping(reward)
         reward_episode += reward
         duration_episode += 1
-
+        if not lives == info["lives"]:
+            observation, _, _, _, info = env.step(1)  # starts Breakout when life is lost. Agent does not learn this,
+                                                    #  because a new episode is started once a life is lost.
+            observation = transform_observation(observation)
+            lives = info["lives"]
         if done or truncation:
-            print(f"Episode: {episode_evaluation}, Reward: {reward_episode}")
+            print(f"Evaluation Episode: {episode_evaluation}, Duration: {duration_episode}, Score: {reward_episode}")
             return reward_episode
+
+
+def run_original_evaluation(episode_evaluation):
+    observation, info = env.reset()
+    observation, _, _, _, _ = env.step(1)
+    no_ops = random.randint(0, 29)
+    for i in range(no_ops):
+        observation, _, _, _, info = env.step(0)
+    observation = transform_observation(observation)
+    reward_episode = 0
+    number_frames = 0
+    lives = info["lives"]
+    learner.epsilon = 0.05
+    while number_frames < 4500:  # training time: 5 min; 60 frames/s * 60s * 5 min / 4 frames/step
+        action = learner.get_action(observation)
+        observation, reward, done, truncation, info = env.step(action)
+        observation = transform_observation(observation)
+        reward_episode += reward
+        number_frames += 1
+        if not lives == info["lives"]:
+            observation, _, _, _, info = env.step(1)  # starts Breakout when life is lost. Agent does not learn this,
+                                                    #  because a new episode is started once a life is lost.
+            observation = transform_observation(observation)
+            lives = info["lives"]
+        if done or truncation:
+            #observation, info = env.reset()
+            #observation, _, _, _, _ = env.step(1)
+            #no_ops = random.randint(0, 29)
+            #for i in range(no_ops):
+            #    observation, _, _, _, info = env.step(0)
+            #observation = transform_observation(observation)
+            #lives = info["lives"]
+            break
+    print(f"Evaluation Episode: {episode_evaluation}, Score: {reward_episode}")
+    return reward_episode
+
 
 
 def plot_results(rewards, losses):
@@ -208,24 +250,24 @@ def plot_results(rewards, losses):
     plt.show()
 
 
-def make_csv_files(rewards_evaluation, name):
-    make_hyperparameter_csv_file(name)
-    make_results_csv_file(rewards_evaluation, name)
+#def make_csv_files(rewards_evaluation, name):
+#    make_hyperparameter_csv_file(name)
+#    make_results_csv_file(rewards_evaluation, name)
 
 
-def make_hyperparameter_csv_file(name):
-    hyperparameters = ["Training frames", "Batch size", "Replay memory size", "Policy Network Update Frequency",
-                       "Target Network Update Frequency", "Learning Rate", "Initial Exploration", "Final exploration",
-                       "Final exploration frame"]
-    hyperparameters_values = [TRAINING_FRAMES, BATCH_SIZE, REPLAY_MEMORY_SIZE, UPDATE_FREQUENCY,
-                             TARGET_NETWORK_UPDATE_FREQUENCY, LEARNING_RATE, INITIAL_EXPLORATION, FINAL_EXPLORATION,
-                             FINAL_EXPLORATION_FRAME]
-    hyperparameters_dataframe = pd.DataFrame({"Hyperparameters": hyperparameters, "Hyperparameter values":
-                                              hyperparameters_values})
-
-    file_name = f"{name}_hyperparameters.csv"
-    path_file = pathlib.Path(f"results/{file_name}")
-    hyperparameters_dataframe.to_csv(path_file, index=False)
+#def make_hyperparameter_csv_file(name):
+#    hyperparameters = ["Training frames", "Batch size", "Replay memory size", "Policy Network Update Frequency",
+#                       "Target Network Update Frequency", "Learning Rate", "Initial Exploration", "Final exploration",
+#                       "Final exploration frame"]
+#    hyperparameters_values = [TRAINING_FRAMES, BATCH_SIZE, REPLAY_MEMORY_SIZE, UPDATE_FREQUENCY,
+#                              TARGET_NETWORK_UPDATE_FREQUENCY, LEARNING_RATE, INITIAL_EXPLORATION, FINAL_EXPLORATION,
+#                              FINAL_EXPLORATION_FRAME]
+#    hyperparameters_dataframe = pd.DataFrame({"Hyperparameters": hyperparameters, "Hyperparameter values":
+#                                              hyperparameters_values})##
+#
+#    file_name = f"{name}_hyperparameters.csv"
+#    path_file = pathlib.Path(f"results/{file_name}")
+#    hyperparameters_dataframe.to_csv(path_file, index=False)
 
 
 def make_results_csv_file(rewards, name):
@@ -253,7 +295,7 @@ if __name__ == "__main__":
                         help="if argument is given, DQN will be used as algorithm, otherwise DDQN will be used")
     parser.add_argument("-sn", "--single_network", action="store_true",
                         help="if argument is given, single stream network is used, otherwise dueling network is used")
-    parser.add_argument("-g", "--game", metavar="", default="pong",
+    parser.add_argument("-g", "--game", metavar="", default="Pong",
                         help='choose game that is played; default game is "Pong"')
     parser.add_argument("-tf", "--training_frames", metavar="", default=5_000_000, type=int,
                         help="choose the number of frames, that is used for training; default is 5,000,000 frames")
@@ -261,14 +303,14 @@ if __name__ == "__main__":
                         help="choose the batch size, that is used for training; default is 32")
     parser.add_argument("-r", "--replay_size", metavar="", default=100_000, type=int,
                         help="choose the replay memory size, that is used for training; default is 100,000")
-    parser.add_argument("-tu", "--target_update", metavar="", default=1_000, type=int,
-                        help="choose the frequency, with which the target network is updated; default is every 1,000 "
-                             "frames")
     parser.add_argument("-u", "--update_frequency", metavar="", default=4, type=int,
                         help="choose the frequency, with which the policy network is updated; default is every 4 frames"
                         )
-    parser.add_argument("-l", "--learning_rate", metavar="", default=1e-4, type=float,
-                        help="choose the learning rate, that is used for training; default is 0.004")
+    parser.add_argument("-tu", "--target_update", metavar="", default=1_000, type=int,
+                        help="choose the frequency, with which the target network is updated; default is every 1,000 "
+                             "frames")
+    parser.add_argument("-lr", "--learning_rate", metavar="", default=1e-4, type=float,
+                        help="choose the learning rate, that is used for training; default is 0.001")
     parser.add_argument("-ie", "--initial_exploration", metavar="", default=1, type=float,
                         help="choose the initial exploration rate; default is 1")
     parser.add_argument("-fe", "--final_exploration", metavar="", default=0.02, type=float,
@@ -304,11 +346,11 @@ if __name__ == "__main__":
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
-    env = gym.make('ALE/' + args.game.lower().capitalize() + '-v5',
+    env = gym.make('ALE/' + args.game + '-v5',
                    frameskip=1,  # no frameskip, as frameskip is applied in the AtariPreprocessing-wrapper
                    repeat_action_probability=0,  # repeat_action_probability set to 0 because not applied in original paper
                    full_action_space=False)
-    env = AtariPreprocessing(env, scale_obs=True)
+    env = AtariPreprocessing(env, terminal_on_life_loss=True, scale_obs=True)
     env = FrameStack(env, AGENT_HISTORY_LENGTH)
     number_valid_actions = env.action_space.n
     observation = env.reset()[0]
@@ -321,17 +363,37 @@ if __name__ == "__main__":
         train_model(observation)
         path_file = pathlib.Path(f"models/{name}.pth")
         torch.save(learner.model, path_file)
-        print("Training complete")
     else:
+        print("Loading model")
         path_file = pathlib.Path(f"models/{name}.pth")
         learner.model = torch.load(path_file)
 
-    rewards_evaluation = []
+    env = gym.make('ALE/' + args.game + '-v5',
+                   frameskip=1,  # no frameskip, as frameskip is applied in the AtariPreprocessing-wrapper
+                   repeat_action_probability=0,  # repeat_action_probability set to 0 because not applied in original paper
+                   full_action_space=False)
+    env = AtariPreprocessing(env, scale_obs=True)
+    env = FrameStack(env, AGENT_HISTORY_LENGTH)
 
-    for i in range(100):
-        rewards_evaluation.append(run_evaluation(i + 1))
+    rewards_evaluation = []
+    print("Starting Evaluation")
+
+    #for i in range(100):
+    #    rewards_evaluation.append(run_evaluation(i + 1))
+
+    #make_csv_files(rewards_evaluation, name)
+
+
+    #print(f"Result original evaluation: mean {statistics.mean(rewards_evaluation)},
+    # f"SD {statistics.stdev(rewards_evaluation)}")
+
+    rewards_original_evaluation = []
+
+    for i in range(30):
+        rewards_original_evaluation.append(run_original_evaluation(i + 1))
     env.close()
 
-    make_csv_files(rewards_evaluation, name)
+    make_results_csv_file(rewards_original_evaluation, f"{name}")
 
-    print(f"Result evaluation: {sum(rewards_evaluation) / len(rewards_evaluation)}")
+    print(f"Result original evaluation: mean {statistics.mean(rewards_original_evaluation):.2f}, "
+          f"SD {statistics.stdev(rewards_original_evaluation):.2f}")
