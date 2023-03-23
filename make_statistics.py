@@ -57,7 +57,7 @@ if __name__ == "__main__":
     plt.subplots_adjust(right=0.8)
     ax.legend(bbox_to_anchor=(1.25, 1.025), fontsize=10)
 
-    plt.savefig(pathlib.Path(f"figures/{args.game}.pdf"))
+    plt.savefig(pathlib.Path(f"figures/{args.game.lower()}_statistics.pdf"))
     plt.show()
 
 
