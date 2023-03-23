@@ -324,7 +324,7 @@ if __name__ == "__main__":
         print("Training complete")
     else:
         path_file = pathlib.Path(f"models/{name}.pth")
-        learner.model = torch.load(path_file)
+        learner.model = torch.load(path_file, map_location=torch.device(device))
 
     rewards_evaluation = []
 
