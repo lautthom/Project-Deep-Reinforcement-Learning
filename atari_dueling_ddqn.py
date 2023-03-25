@@ -190,10 +190,7 @@ def run_evaluation(episode_evaluation):
 
 def run_original_evaluation(episode_evaluation):
     observation, info = env.reset()
-    observation, _, _, _, _ = env.step(1)
-    no_ops = random.randint(0, 29)
-    for i in range(no_ops):
-        observation, _, _, _, info = env.step(0)
+    #observation, _, _, _, _ = env.step(1)
     observation = transform_observation(observation)
     reward_episode = 0
     number_frames = 0
@@ -206,8 +203,8 @@ def run_original_evaluation(episode_evaluation):
         reward_episode += reward
         number_frames += 1
         if not lives == info["lives"]:
-            observation, _, _, _, info = env.step(1)  # starts Breakout when life is lost. Agent does not learn this,
-                                                    #  because a new episode is started once a life is lost.
+            observation, _, _, _, info = env.step(1)  # starts Breakout when life is lost. Agent does not learn this
+            # consistently, because in training a new episode is started once a life is lost
             observation = transform_observation(observation)
             lives = info["lives"]
         if done or truncation:
@@ -368,6 +365,7 @@ if __name__ == "__main__":
         path_file = pathlib.Path(f"models/{name}.pth")
         learner.model = torch.load(path_file, map_location=torch.device(device))
 
+    # initialize new environment, because wrappers with different configurations are needed for evaluation
     env = gym.make('ALE/' + args.game + '-v5',
                    frameskip=1,  # no frameskip, as frameskip is applied in the AtariPreprocessing-wrapper
                    repeat_action_probability=0,  # repeat_action_probability set to 0 because not applied in original paper
