@@ -27,14 +27,14 @@ Then the code can be run.
 python atari_dueling_ddqn.py
 python make_statistics.py
 ```
-&nbsp;
 
 For the `atari_dueling_ddqn.py` different options in the command line can be used:  
+
 `-t` or `--training` if argument is given, model will be trained, otherwise an already trained model will be loaded  
-`-dqn`    if argument is given, DQN will be used as algorithm, otherwise DDQN will be used  
+`-dqn`    if argument is given, DQN will be used as algorithm, otherwise DDQN will be used
 `-sn` or `--single_network`                   if argument is given, single stream network is used, otherwise dueling network is used  
 `-g` or `--game` choose game that is played; game must be given as a string, it is case-sensitive; an overview of the available games is given at: https://www.gymlibrary.dev/environments/atari/#; default game is "Pong"  
-`-a` or `--adam` if argument is given, Adam is used as an optimizer  
+`-a` or `--adam` if argument is given, Adam is used as an optimizer
 `-tf` or `--training_frames` choose the number of frames, that is used for training; default is 5,000,000 frames  
 `-b` or `--batch_size` choose the batch size, that is used for training; default is 32  
 `-r` or `--replay_size` choose the replay memory size, that is used for training; default is 100,000  
