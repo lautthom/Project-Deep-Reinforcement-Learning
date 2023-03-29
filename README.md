@@ -48,11 +48,11 @@ There are different options for `atari_dueling_ddqn.py` that can be used in the 
 `-fe` or `--final_exploration` choose the final exploration rate; default is 0.02  
 `-ff` or `--final_exploration_frame` choose the final exploration frame, after which the final exploration rate is used; default is a 10th of total training frames  
 
-An evaluation run using an already trained model for `"Pong"`, which was trained using DDQN and a dueling network, can for example be started using:
+An evaluation run using an already trained model for "Pong", which was trained using DDQN and a dueling network, can for example be started using:
 ```
 python atari_dueling_ddqn.py
 ```
-If a new model should be trained, playing `"Breakout"` and trained using DQN and a single network, using Adam as an optimizer, with 10,000,000 training frames, a batch size of 64, a replay memory size of 250,000, an update frequency of every 8 frames, target network updates every 5,000 frames, using a learning rate of 0.0005, an initial exploration of 0.5, a final exploration of 0.01, and the final exploration frame should be the 10,000,000th frame, this can be done using:
+If a new model should be trained, playing "Breakout" and trained using DQN and a single network, using Adam as an optimizer, with 10,000,000 training frames, a batch size of 64, a replay memory size of 250,000, an update frequency of every 8 frames, target network updates every 5,000 frames, using a learning rate of 0.0005, an initial exploration of 0.5, a final exploration of 0.01, and the final exploration frame should be the 10,000,000th frame, this can be done using:
 ```
 python atari_dueling_ddqn.py -t -dqn -sn -g "Breakout" -a -tf 10000000 -b 64 -r 250000 -u 8 -tu 5000 -lr 0.0005 -ie 0.5 -fe 0.01 -ff 10000000
 ```
