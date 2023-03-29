@@ -33,7 +33,7 @@ Note, that training a new model, running an evaluation or running `make_statisti
   
 There are different options for `atari_dueling_ddqn.py` that can be used in the command line:  
 
-`-t` or `--training` if argument is given, a new model will be trained, otherwise an already trained model will be loaded from the `model` folder, if one is available for the chosen algorithm and network structure  
+`-t` or `--training` if argument is given, a new model will be trained, otherwise an already trained model will be loaded from the `model` folder, if one is available for the chosen combination of game, algorithm, and network structure  
 `-dqn`    if argument is given, DQN will be used as algorithm, otherwise DDQN will be used
 `-sn` or `--single_network`                   if argument is given, single stream network is used, otherwise dueling network is used  
 `-g` or `--game` choose game that is played; game must be given as a string, it is case-sensitive; an overview of the available games is given at: https://www.gymlibrary.dev/environments/atari/#; default game is "Pong"  
