@@ -27,14 +27,17 @@ Then the code can be run.
 python atari_dueling_ddqn.py
 python make_statistics.py
 ```
+  
+The trained models used for testing are provided in the `models` folder, the results of the test runs can be found in the `results` folder, the figures that are created by `make_statistics.py` are saved in the `figures` folder.
+Note, that training a new model, running an evaluation or running `make_statistics.py` for one of the already provided combinations of game, algorithm (dqn or ddqn), and network structure (single or dueling) will overwrite the corresponding files.
+  
+There are different options for `atari_dueling_ddqn.py` that can be used in the command line:  
 
-For the `atari_dueling_ddqn.py` different options in the command line can be used:  
-
-`-t` or `--training` if argument is given, model will be trained, otherwise an already trained model will be loaded  
+`-t` or `--training` if argument is given, a new model will be trained, otherwise an already trained model will be loaded from the `model` folder, if one is available for the chosen algorithm and network structure  
 `-dqn`    if argument is given, DQN will be used as algorithm, otherwise DDQN will be used
 `-sn` or `--single_network`                   if argument is given, single stream network is used, otherwise dueling network is used  
 `-g` or `--game` choose game that is played; game must be given as a string, it is case-sensitive; an overview of the available games is given at: https://www.gymlibrary.dev/environments/atari/#; default game is "Pong"  
-`-a` or `--adam` if argument is given, Adam is used as an optimizer
+`-a` or `--adam` if argument is given, Adam is used as an optimizer; otherwise RMSprop is used
 `-tf` or `--training_frames` choose the number of frames, that is used for training; default is 5,000,000 frames  
 `-b` or `--batch_size` choose the batch size, that is used for training; default is 32  
 `-r` or `--replay_size` choose the replay memory size, that is used for training; default is 100,000  
@@ -45,15 +48,12 @@ For the `atari_dueling_ddqn.py` different options in the command line can be use
 `-fe` or `--final_exploration` choose the final exploration rate; default is 0.02  
 `-ff` or `--final_exploration_frame` choose the final exploration frame, after which the final exploration rate is used; default is a 10th of total training frames  
 
-This means, that Deep SAD using MNIST, the `standard` mode, with the weight `3`, the `0` category as normal class, the `1` category as anomaly class, a labeled 
-anomaly ratio of `0.05`, no labeled normal data, a pollution of `0.1` in the unlabeled data, and no pollution in the labeled anomalies, can for example be run by using:
+An evaluation run using an already trained model for `"Pong"`, which was trained using DDQN and a dueling network, can for example be started using:
 ```
-python DeepSAD.py
+python atari_dueling_ddqn.py
 ```
-Deep SAD using CIFAR-10, the `extended` mode, with the weight `2` for labeled normal data, and a secondary weight `4` for labeled anomalies, 
-the `1` category as normal class, the `2` category as anomaly class, a labeled anomaly ratio of `0.01`, a labeled normal data ratio of `0.1`, 
-a pollution of `0.1` in the unlabeled data, and a pollution of `0.01` in the labeled anomalies, can for example be run by using:
+If a new model should be trained, playing `"Breakout"` and trained using DQN and a single network, using Adam as an optimizer, with 10,000,000 training frames, a batch size of 64, a replay memory size of 250,000, an update frequency of every 8 frames, target network updates every 5,000 frames, using a learning rate of 0.0005, an initial exploration of 0.5, a final exploration of 0.01, and the final exploration frame should be the 10,000,000th frame, this can be done using:
 ```
-python DeepSAD.py -d "cifar10" -m "extended" -w 2 -sw 4 -cn 1 -ca 2 -ra 0.01 -rn 0.1 -rpu 0.1 -rpl 0.01
+python atari_dueling_ddqn.py -t -dqn -sn -g "Breakout" -a -tf 10000000 -b 64 -r 250000 -u 8 -tu 5000 -lr 0.0005 -ie 0.5 -fe 0.01 -ff 10000000
 ```
 
