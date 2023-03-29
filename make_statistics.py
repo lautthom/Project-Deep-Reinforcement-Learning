@@ -8,43 +8,49 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
+    # Command Line Interface
     parser = argparse.ArgumentParser(description="Calculate statistics and two-way ANOVA for DQN results and create "
                                                  "graphic")
     parser.add_argument("-g", "--game", metavar="", default="Pong",
                         help='choose game for which results should be evaluated; default game is "Pong"')
     args = parser.parse_args()
 
+    # get results from .csv-files
     ddqn_dueling = pd.read_csv(pathlib.Path(f"results/{args.game.lower()}_dueling_ddqn.csv"))
-    ddqn_single = pd.read_csv(pathlib.Path(f"results/{args.game.lower()}_single_ddqn.csv"))
     dqn_dueling = pd.read_csv(pathlib.Path(f"results/{args.game.lower()}_dueling_dqn.csv"))
+    ddqn_single = pd.read_csv(pathlib.Path(f"results/{args.game.lower()}_single_ddqn.csv"))
     dqn_single = pd.read_csv(pathlib.Path(f"results/{args.game.lower()}_single_dqn.csv"))
 
+    # compute means and SDs for different algorithms and network structures
     ddqn_dueling_list = ddqn_dueling["Results Evaluation"].values.tolist()
     print(f"DDQN dueling Mean: {statistics.mean(ddqn_dueling_list):.2f}, SD: {statistics.stdev(ddqn_dueling_list):.2f}")
-    ddqn_single_list = ddqn_single["Results Evaluation"].values.tolist()
-    print(f"DDQN single Mean: {statistics.mean(ddqn_single_list):.2f}, SD: {statistics.stdev(ddqn_single_list):.2f}")
     dqn_dueling_list = dqn_dueling["Results Evaluation"].values.tolist()
     print(f"DQN dueling Mean: {statistics.mean(dqn_dueling_list):.2f}, SD: {statistics.stdev(dqn_dueling_list):.2f}")
+    ddqn_single_list = ddqn_single["Results Evaluation"].values.tolist()
+    print(f"DDQN single Mean: {statistics.mean(ddqn_single_list):.2f}, SD: {statistics.stdev(ddqn_single_list):.2f}")
     dqn_single_list = dqn_single["Results Evaluation"].values.tolist()
     print(f"DQN single Mean: {statistics.mean(dqn_single_list):.2f}, SD: {statistics.stdev(dqn_single_list):.2f}")
 
+    # transform data in preparation of ANOVA
     df = pd.concat([ddqn_dueling, ddqn_single, dqn_dueling, dqn_single], ignore_index=True)
     df = df.rename(columns={"Results Evaluation": "ResultsEvaluation"})
-
     is_ddqn_list = ["ddqn" if i < 60 else "dqn" for i in range(120)]
     is_dueling_list = ["dueling" if i // 30 % 2 == 0 else "single" for i in range(120)]
     df["Algorithm"] = is_ddqn_list
     df["NetworkArchitecture"] = is_dueling_list
 
+    # conduct ANOVA
     model = ols('ResultsEvaluation ~ C(Algorithm) + C(NetworkArchitecture) + C(Algorithm):C(NetworkArchitecture)',
                 data=df).fit()
     print(sm.stats.anova_lm(model, typ=2))
 
+    # define parameters for figure
     dqn_means = [statistics.mean(dqn_single_list), statistics.mean(dqn_dueling_list)]
     ddqn_means = [statistics.mean(ddqn_single_list), statistics.mean(ddqn_dueling_list)]
     dqn_sd = [statistics.stdev(dqn_single_list), statistics.stdev(dqn_dueling_list)]
     ddqn_sd = [statistics.stdev(ddqn_single_list), statistics.stdev(ddqn_dueling_list)]
 
+    # create figure
     fig, ax = plt.subplots()
     ind = np.arange(2)
     width = 0.2
@@ -57,6 +63,7 @@ if __name__ == "__main__":
     plt.subplots_adjust(right=0.8)
     ax.legend(bbox_to_anchor=(1.25, 1.025), fontsize=10)
 
+    # save and show figure
     plt.savefig(pathlib.Path(f"figures/{args.game.lower()}_statistics.pdf"))
     plt.show()
 

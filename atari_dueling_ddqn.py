@@ -14,6 +14,7 @@ from gym.wrappers import AtariPreprocessing, FrameStack
 class NeuralNetwork(torch.nn.Module):
 
     def __init__(self, input_size, output_size):
+        """initializes components of the neural network"""
         super().__init__()
         self.ReLU = torch.nn.ReLU()
         self.conv1 = torch.nn.Conv2d(in_channels=input_size, out_channels=32, kernel_size=8, stride=4)
@@ -27,6 +28,7 @@ class NeuralNetwork(torch.nn.Module):
         self.output_layer = torch.nn.Linear(512, output_size)
 
     def forward(self, x):
+        """defines structure of the neural network"""
         x = self.conv1(x)
         x = self.ReLU(x)
         x = self.conv2(x)
@@ -49,14 +51,19 @@ class NeuralNetwork(torch.nn.Module):
 class DQNLearner:
 
     def __init__(self, dim_observations, dim_actions):
+        """initializes learner by setting up policy and target network, as well as epsilon, replay memory and optimizer
+        """
         self.epsilon = INITIAL_EXPLORATION
         self.memory = deque(maxlen=REPLAY_MEMORY_SIZE)
         self.model = NeuralNetwork(dim_observations, dim_actions).to(device)
         self.target_net = NeuralNetwork(dim_observations, dim_actions).to(device)
-        #self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
-        self.optimizer = torch.optim.RMSprop(self.model.parameters(), lr=LEARNING_RATE, alpha=0.95, eps=0.01)
+        if USES_ADAM:
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
+        else:
+            self.optimizer = torch.optim.RMSprop(self.model.parameters(), lr=LEARNING_RATE, alpha=0.95, eps=0.01)
 
     def get_action(self, observation, training=True):
+        """returns action according to epsilon-greedy policy"""
         if random.random() < self.epsilon and training:
             return env.action_space.sample()
         else:
@@ -66,9 +73,11 @@ class DQNLearner:
             return action
 
     def add_memory(self, last_observation, action, reward, observation, done):
+        """adds transition to replay memory"""
         self.memory.append([last_observation, action, reward, observation, done])
 
     def learn(self):
+        """samples minibatch and updates network with sampled minibatch"""
         batch = random.sample(self.memory, BATCH_SIZE)
         last_observations, actions, rewards, observations, dones = unpack_batch(batch)
         actions = actions.type(torch.int64).unsqueeze(1)
@@ -94,15 +103,18 @@ class DQNLearner:
         return loss
 
     def update_target_network(self):
+        """synchronized target network with policy network"""
         self.target_net.load_state_dict(self.model.state_dict())
 
     def update_epsilon(self):
+        """decreases epsilon if epsilon is above final exploration rate"""
         if self.epsilon <= FINAL_EXPLORATION:
             return
         self.epsilon -= EXPLORATION_DECAY
 
 
 def unpack_batch(batch):
+    """returns contents of batch as tensors"""
     last_observations = [i[0] for i in batch]
     last_observations = torch.from_numpy(np.array(last_observations)).to(device)
     actions = [i[1] for i in batch]
@@ -117,31 +129,40 @@ def unpack_batch(batch):
 
 
 def transform_observation(observation):
+    """transforms observation from LazyFrames to np.arrays"""
     return np.array(observation)
 
 
 def reward_clipping(reward):
+    """returns clipped reward"""
     return 1 if reward > 0 else -1 if reward < 0 else 0
 
 
 def train_model(observation):
+    """runs the main training loop, consisting of choosing actions, adding transitions to memory,
+    updating policy network, and updating epsilon and target network"""
     number_current_frame, trained_episode, duration_episode, rewards_episode = 0, 0, 0, 0
     losses_episode, rewards, losses = [], [], []
     while number_current_frame < TRAINING_FRAMES:
+        # action selection
         action = learner.get_action(observation)
         last_observation = observation
 
+        # action execution and transform returned variables
         observation, reward, done, truncation, info = env.step(action)
         observation = transform_observation(observation)
         reward = reward_clipping(reward)
         rewards_episode += reward
 
+        # add transitions to memory
         learner.add_memory(last_observation, action, reward, observation, done)
 
+        # update policy network
         if number_current_frame % UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
             loss = learner.learn()
             losses_episode.append(loss.item())
 
+        # synchronize target network and update epsilon
         if number_current_frame % TARGET_NETWORK_UPDATE_FREQUENCY == 0 and number_current_frame > REPLAY_START_SIZE:
             learner.update_target_network()
             learner.update_epsilon()
@@ -166,37 +187,15 @@ def train_model(observation):
 
 
 def run_evaluation(episode_evaluation):
+    """runs evaluation as suggested in DQN paper; using an epsilon of 0.05 and 5 minutes of playing time or until game
+    is over"""
     observation, info = env.reset()
-    observation, _, _, _, _ = env.step(1)
-    observation = transform_observation(observation)
-    reward_episode = 0
-    duration_episode = 0
-    lives = info["lives"]
-    while True:
-        action = learner.get_action(observation, training=False)
-        observation, reward, done, truncation, info = env.step(action)
-        observation = transform_observation(observation)
-        reward_episode += reward
-        duration_episode += 1
-        if not lives == info["lives"]:
-            observation, _, _, _, info = env.step(1)  # starts Breakout when life is lost. Agent does not learn this,
-                                                    #  because a new episode is started once a life is lost.
-            observation = transform_observation(observation)
-            lives = info["lives"]
-        if done or truncation:
-            print(f"Evaluation Episode: {episode_evaluation}, Duration: {duration_episode}, Score: {reward_episode}")
-            return reward_episode
-
-
-def run_original_evaluation(episode_evaluation):
-    observation, info = env.reset()
-    #observation, _, _, _, _ = env.step(1)
     observation = transform_observation(observation)
     reward_episode = 0
     number_frames = 0
     lives = info["lives"]
     learner.epsilon = 0.05
-    while number_frames < 4500:  # training time: 5 min; 60 frames/s * 60s * 5 min / 4 frames/step
+    while number_frames < 4500:  # playing of 5 min; 60 frames/s * 60 s * 5 min / 4 frames/step
         action = learner.get_action(observation)
         observation, reward, done, truncation, info = env.step(action)
         observation = transform_observation(observation)
@@ -208,20 +207,13 @@ def run_original_evaluation(episode_evaluation):
             observation = transform_observation(observation)
             lives = info["lives"]
         if done or truncation:
-            #observation, info = env.reset()
-            #observation, _, _, _, _ = env.step(1)
-            #no_ops = random.randint(0, 29)
-            #for i in range(no_ops):
-            #    observation, _, _, _, info = env.step(0)
-            #observation = transform_observation(observation)
-            #lives = info["lives"]
             break
     print(f"Evaluation Episode: {episode_evaluation}, Score: {reward_episode}")
     return reward_episode
 
 
-
 def plot_results(rewards, losses):
+    """creates plot depicting rewards and losses during training"""
     mean_rewards = []
     mean_losses = []
     for i in range(len(rewards) - 99):
@@ -233,11 +225,13 @@ def plot_results(rewards, losses):
     title = "Results DDQN" if IS_DDQN else "Results DQN"
     title += " dual-stream" if IS_DUELING_NETWORK else " single-stream"
     plt.suptitle(title)
+    # subplot for rewards
     plt.subplot(2, 1, 1)
     plt.plot(rewards)
     plt.plot(range(99, len(mean_rewards) + 99), mean_rewards, color="orange")
     plt.ylabel("Rewards")
 
+    # subplot for losses
     plt.subplot(2, 1, 2)
     plt.plot(losses)
     plt.plot(range(99, len(mean_losses) + 99), mean_losses, color="orange")
@@ -247,27 +241,8 @@ def plot_results(rewards, losses):
     plt.show()
 
 
-#def make_csv_files(rewards_evaluation, name):
-#    make_hyperparameter_csv_file(name)
-#    make_results_csv_file(rewards_evaluation, name)
-
-
-#def make_hyperparameter_csv_file(name):
-#    hyperparameters = ["Training frames", "Batch size", "Replay memory size", "Policy Network Update Frequency",
-#                       "Target Network Update Frequency", "Learning Rate", "Initial Exploration", "Final exploration",
-#                       "Final exploration frame"]
-#    hyperparameters_values = [TRAINING_FRAMES, BATCH_SIZE, REPLAY_MEMORY_SIZE, UPDATE_FREQUENCY,
-#                              TARGET_NETWORK_UPDATE_FREQUENCY, LEARNING_RATE, INITIAL_EXPLORATION, FINAL_EXPLORATION,
-#                              FINAL_EXPLORATION_FRAME]
-#    hyperparameters_dataframe = pd.DataFrame({"Hyperparameters": hyperparameters, "Hyperparameter values":
-#                                              hyperparameters_values})##
-#
-#    file_name = f"{name}_hyperparameters.csv"
-#    path_file = pathlib.Path(f"results/{file_name}")
-#    hyperparameters_dataframe.to_csv(path_file, index=False)
-
-
 def make_results_csv_file(rewards, name):
+    """creates .csv-file containing the results of the evaluation"""
     results_dataframe = pd.DataFrame({"Results Evaluation": rewards})
 
     file_name = f"{name}.csv"
@@ -276,6 +251,7 @@ def make_results_csv_file(rewards, name):
 
 
 def get_file_name():
+    """returns the used filenames based on chosen game, algorithm, and network structure"""
     game = args.game.lower()
     network = "_dueling" if IS_DUELING_NETWORK else "_single"
     algorithm = "_ddqn" if IS_DDQN else "_dqn"
@@ -284,6 +260,7 @@ def get_file_name():
 
 
 if __name__ == "__main__":
+    # Command Line Interface
     parser = argparse.ArgumentParser(description="Run DQN or one of its extensions on Atari games")
     parser.add_argument("-t", "--training", action="store_true",
                         help="if argument is given, model will be trained, otherwise already trained model will be "
@@ -294,6 +271,8 @@ if __name__ == "__main__":
                         help="if argument is given, single stream network is used, otherwise dueling network is used")
     parser.add_argument("-g", "--game", metavar="", default="Pong",
                         help='choose game that is played; default game is "Pong"')
+    parser.add_argument("-a", "--adam", action="store_true",
+                        help="if argument is given, Adam is used as an optimizer")
     parser.add_argument("-tf", "--training_frames", metavar="", default=5_000_000, type=int,
                         help="choose the number of frames, that is used for training; default is 5,000,000 frames")
     parser.add_argument("-b", "--batch_size", metavar="", default=32, type=int,
@@ -317,9 +296,11 @@ if __name__ == "__main__":
                              " default is a 10th of total training frames")
 
     args = parser.parse_args()
+    # define global variables
     IS_TRAINING = args.training
     IS_DDQN = not args.dqn
     IS_DUELING_NETWORK = not args.single_network
+    USES_ADAM = args.adam
     TRAINING_FRAMES = args.training_frames
     BATCH_SIZE = args.batch_size
     REPLAY_MEMORY_SIZE = args.replay_size
@@ -341,21 +322,25 @@ if __name__ == "__main__":
         EXPLORATION_DECAY = 1
     REPLAY_START_SIZE = 10_000
 
+    # setup device for PyTorch
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
+    # setup environment and wrappers as in DQN paper
     env = gym.make('ALE/' + args.game + '-v5',
                    frameskip=1,  # no frameskip, as frameskip is applied in the AtariPreprocessing-wrapper
-                   repeat_action_probability=0,  # repeat_action_probability set to 0 because not applied in original paper
+                   repeat_action_probability=0,  # repeat_action_probability set 0 because not applied in original paper
                    full_action_space=False)
     env = AtariPreprocessing(env, terminal_on_life_loss=True, scale_obs=True)
     env = FrameStack(env, AGENT_HISTORY_LENGTH)
     number_valid_actions = env.action_space.n
     observation = env.reset()[0]
     observation = transform_observation(observation)
+    # set up learner
     learner = DQNLearner(observation.shape[0], number_valid_actions)
     learner.update_target_network()
     name = get_file_name()
 
+    # load already trained model or train new model
     if IS_TRAINING:
         train_model(observation)
         path_file = pathlib.Path(f"models/{name}.pth")
@@ -367,8 +352,8 @@ if __name__ == "__main__":
 
     # initialize new environment, because wrappers with different configurations are needed for evaluation
     env = gym.make('ALE/' + args.game + '-v5',
-                   frameskip=1,  # no frameskip, as frameskip is applied in the AtariPreprocessing-wrapper
-                   repeat_action_probability=0,  # repeat_action_probability set to 0 because not applied in original paper
+                   frameskip=1,
+                   repeat_action_probability=0,
                    full_action_space=False)
     env = AtariPreprocessing(env, scale_obs=True)
     env = FrameStack(env, AGENT_HISTORY_LENGTH)
@@ -376,22 +361,11 @@ if __name__ == "__main__":
     rewards_evaluation = []
     print("Starting Evaluation")
 
-    #for i in range(100):
-    #    rewards_evaluation.append(run_evaluation(i + 1))
-
-    #make_csv_files(rewards_evaluation, name)
-
-
-    #print(f"Result original evaluation: mean {statistics.mean(rewards_evaluation)},
-    # f"SD {statistics.stdev(rewards_evaluation)}")
-
-    rewards_original_evaluation = []
-
     for i in range(30):
-        rewards_original_evaluation.append(run_original_evaluation(i + 1))
+        rewards_evaluation.append(run_evaluation(i + 1))
     env.close()
 
-    make_results_csv_file(rewards_original_evaluation, f"{name}")
+    make_results_csv_file(rewards_evaluation, f"{name}")
 
-    print(f"Result original evaluation: mean {statistics.mean(rewards_original_evaluation):.2f}, "
-          f"SD {statistics.stdev(rewards_original_evaluation):.2f}")
+    print(f"Result original evaluation: mean {statistics.mean(rewards_evaluation):.2f}, "
+          f"SD {statistics.stdev(rewards_evaluation):.2f}")
