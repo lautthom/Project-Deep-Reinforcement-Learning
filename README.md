@@ -4,7 +4,7 @@ The code is written in and tested for `Python 3.9`, the required packages are li
 
 Clone the repository to the current directory of your machine to run the code:
 ```
-git clone GITHUB LINK
+git clone https://github.com/lautthom/Project-Deep-Reinforcement-Learning
 ```
 
 It is recommended to set up and use a virtual environment to run the code: 
